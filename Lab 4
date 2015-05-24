@@ -1,0 +1,270 @@
+;*-------------------------------------------------------------------
+;* Name:    	lab_4_program.s 
+;* Purpose: 	A sample style for lab-4
+;* Term:		Fall 2014
+;*-------------------------------------------------------------------
+				THUMB 								; Declare THUMB instruction set 
+				AREA 	My_code, CODE, READONLY 	; 
+				EXPORT 		__MAIN 					; Label __MAIN is used externally 
+				EXPORT 		EINT3_IRQHandler
+				ENTRY 
+
+__MAIN
+
+; The following lines are similar to previous labs.
+; They just turn off all LEDs 
+				MOV		R11,#0x200000		;Enables EINT3  (External Interrupt 3)
+				LDR		R10, =ISER0
+				STR 	R11, [R10]
+				
+				MOV 	R11, #0x400			; Enable GPIO interrupt on pin P2  ( Pin 2.10  - used to enable interrupts...
+				LDR		R10, =IO2IntEnf		; on the falling edge
+				STR 	R11, [R10]	
+				
+				LDR		R10, =LED_BASE_ADR	 ; R10 is a  pointer to the base address for the LEDs
+				MOV 	R3, #0xF0000000		 ; Turn off 3 LEDs on port 1  
+				STR 	R3, [r10, #0x20]                ; Turn off all the lights
+				MOV 	R3, #0x0000007C
+				STR 	R3, [R10, #0x40] 	; Turn off five LEDs on port 2 
+
+				MOV 	R6,#0x1			; Holds the flag for interrupt detection
+
+	
+				
+				
+; This line is very important in your main program
+; Initializes R11 to a 16-bit non-zero value and NOTHING else can write to R11 !!
+								
+				MOV	R11, #0xABCD			; Init the random number generator with a non-zero number
+LOOP 			BL 		RNG								;Branch to randam number subroutine which is then stored in R4
+				MOV 	R2, #0x2  ; Move 10000 to R2
+				MUL 	R4, R4, R2						; Multiply the delay by 10000 to create the appropriate delay
+				BL 		DELAY1  ; multiply the delay by 10000 in order to get a value in seconds.Then we call delay
+				
+				MOV R5, #0x0			;Holds the reflex time -  when the lights start flashing , thats when you start counting the reflex time
+Count			MOV R0, #0x32			;Holds 50 in decimal to create a 50ms delay. You want 32 50ms delay
+
+MultipleLoop2	MOV	R2, #0x4E2			;Creates a 1ms delay	50,49,48,
+loopMore3		SUBS	R2, #1			
+				BNE	loopMore3
+				SUBS 	R0, #1
+				BEQ		TurnOff			;Once 50ms have elasped, turn off the lights
+				ADD 	R5, R5, #1		;R5 counts the number of ms until the button is pressed
+				CMP		R6, #0x0		;Checks if the button is pressed or not….
+				BEQ        Show_Again		;If button is pressed, then begin the displaying the 32 bit number on the LEDs
+				BNE		MultipleLoop2	;Else continue polling every ms
+				
+TurnOff			MOVT 	R3, #0xFFFF			; Turn off all LEDs 
+				STR 	R3, [r10, #0x20]
+				MOV 	R3, #0x000000FF
+				STR 	R3, [R10, #0x40]
+				
+				
+Count2			MOV R0, #0x32
+
+MultipleLoop4	MOV	R2, #0x4E2				
+loopMore4		SUBS	R2, #1			
+				BNE	loopMore4
+				SUBS R0, #1
+				BEQ		TurnOn				;Once 50ms have elasped, turn on the lights
+				ADD 	R5, R5, #1			;R5 counts the number of ms until the button is pressed
+				CMP		R6, #0x0			;Checks if the button is pressed
+				BEQ     Show_Again			;If button is pressed, then begin the displaying the 32 bit number on the LEDs
+				BNE		MultipleLoop4		;Else continue polling every ms	
+				
+TurnOn			MOV 		R3, #0x0			; Turn on all LEDs
+				STR 		R3, [r10, #0x20]
+				MOV 		R3, #0x00000083
+				STR 		R3, [R10, #0x40]
+					
+				B  Count		;Go back to the top to continue flashing all the LEDs 
+
+
+Show_Again		MOV R12, R5		; Display the first 8-bit of the reflex time
+				BL DISPLAY_NUM
+				LSR R12, #8
+				MOV R4, #0x4E20
+				BL DELAY	; Delay for 2 seconds
+				BL DISPLAY_NUM ; Display the next 8 bits
+				LSR R12, #8
+				MOV R4, #0x4E20
+				BL DELAY	; Delay for 2 seconds
+				BL DISPLAY_NUM  ; Display the next 8 bits
+				LSR R12, #8
+				MOV R4, #0x4E20
+				BL DELAY	; Delay for 2 seconds
+				BL DISPLAY_NUM  ; Display the final 8 bits
+				MOV R4, #0xC350
+				BL DELAY	; Delay for 5 seconds before repeating the display of the 32 bit number
+				B Show_Again
+			
+						
+				
+;*------------------------------------------------------------------- 
+; Subroutine RNG ... Generates a pseudo-Random Number in R11 
+;*------------------------------------------------------------------- 
+; R11 holds a random number as per the Linear feedback shift register (Fibonacci) on WikiPedia
+; R11 MUST be initialized to a non-zero 16-bit value at the start of the program
+; R11 can be read anywhere in the code but must only be written to by this subroutine
+RNG 			STMFD		R13!,{R1-R3, R14} 	; Random Number Generator 
+				AND			R1, R11, #0x8000
+				AND			R2, R11, #0x2000
+				LSL			R2, #2
+				EOR			R3, R1, R2
+				AND			R1, R11, #0x1000
+				LSL			R1, #3
+				EOR			R3, R3, R1
+				AND			R1, R11, #0x0400
+				LSL			R1, #5
+				EOR			R3, R3, R1			; The new bit to go into the LSB is present
+				LSR			R3, #15
+				LSL			R11, #1
+				ORR			R11, R11, R3
+				
+				MOV 		R1, #0x0001  ;ANDing the 3 least significant bits one by one by shifting and adding the result 
+				AND 		R3, R1, R11
+				LSL			R1, #1
+				AND 		R4, R1, R11
+				ADD 		R3, R3, R4
+				LSL			R1, #1
+				AND 		R4, R1, R11
+				ADD 		R3, R3, R4
+				ADD 		R4, R3, #0x2  ; Adding two makes it such that it is between 2 and 10
+				LDMFD		R13!,{R1-R3, R15}
+// This will pass a number between 2 and 10….
+
+;*------------------------------------------------------------------- 
+; Subroutine DELAY ... Causes a delay of 1ms * R0 times
+;*------------------------------------------------------------------- 
+; 		aim for better than 10% accuracy
+DELAY			STMFD		R13!,{R2, R14}
+		;
+		; code to generate a delay of 0.1mS * R0 times
+		;
+					
+				MOV R0, R4				
+MultipleLoop3	MOV	R2, #0x0000007D
+loopMore		SUBS	R2, #1			
+				BNE	loopMore
+				SUBS R0, #1;
+				BNE MultipleLoop3
+			
+				LDMFD		R13!,{R2, R15}
+				
+DELAY1			STMFD		R13!,{R2, R3, R14}
+				; Code to generate a delay of 1mS * R0 times
+				
+				MOV R0, R4
+
+MultipleLoop	MOV 		R3, #0xF0000000		; Turn off 3 LEDs on port 1  
+				STR 		R3, [r10, #0x20]
+				MOV 		R3, #0x00000087
+				STR 		R3, [R10, #0x40] 	; Turn off the leftmost LED on port 2 and turn on 4 rightmost LEDs on port 2
+
+				MOV	R2, #0xC4B4			;Creates a 0.25s delay
+				MOVT R2, #0x0004
+loopMore1		SUBS	R2, #1			
+				BNE	loopMore1
+
+				MOV 		R3, #0x0			; Turn on 3 LEDs on port 1  
+				STR 		R3, [r10, #0x20]
+				MOV 		R3, #0x000000FB		;Turn on the leftmost LED on port 2 and turn off 4 rightmost LEDs on port 2
+				STR 		R3, [R10, #0x40]
+
+				MOV	R2, #0xC4B4			;Creates a 0.25s delay
+				MOVT R2, #0x0004
+loopMore2		SUBS	R2, #1			
+				BNE	loopMore2
+				
+				SUBS R0, #1;
+				BNE MultipleLoop		;Continue looping until the random time has elasped
+				
+exitDelay		LDMFD		R13!,{R2, R3, R15}
+
+				
+DISPLAY_NUM		STMFD		R13!,{R1, R2, R4, R8, R14}
+
+; Usefull commaands:  RBIT (reverse bits), BFC (bit field clear), LSR & LSL to shift bits left and right, ORR & AND and EOR for bitwise operations
+				
+				MOV 		R1, R12		
+				MVN 		R1, R1		; complement the number that is passed in
+				MOV 		R2, #0x80   ; generate a bit number that has a leading 1
+				AND 		R4, R1, R2	; Store the one bit by ANDing
+				LSR			R7, R4, #3	; Shift R4 by 3 so that it controls LED 28
+				LSL 		R1, R1, #1	; Shift the number left by 1 
+				AND 		R4, R1, R2
+				LSR			R8, R4, #2	; Shift R4 by 2 so that it controls LED 29 
+				ADD			R7, R7, R8	; Adds both the number for LED 28 and LED 29 so that both are controlled by the same number
+				LSL			R1, R1, #1	
+				AND 		R4, R1, R2
+				ADD			R7, R7, R4	;Adds number for LED 28, 29 and 31 so that all are controlled by the same number
+				LSL			R7, R7, #24  ; Shift by 24 so that it goes to the most significant byte 
+				STR 		R7, [R10, #0x20]  ; finally store in the memory address for port 1
+				
+				MOV 		R7, #0x0	
+				LSL 		R1, R1, #1	
+				AND 		R4, R1, R2
+				LSR			R8, R4, #4  ; Shift by 4 so that it goes to the third bit 
+				ADD			R7, R7, R8	; Adds both the number for LED 28 and LED 29 so that both are controlled by the same number
+				LSL 		R1, R1, #1
+				AND 		R4, R1, R2
+				LSR			R8, R4, #3
+				ADD			R7, R7, R8	; Adds both the number for LED 2 and LED 3 so that both are controlled by the same number
+				LSL 		R1, R1, #1
+				AND 		R4, R1, R2
+				LSR			R8, R4, #2
+				ADD			R7, R7, R8	;Adds number for LED 2, 3 and 4 so that all are controlled by the same number
+				LSL 		R1, R1, #1
+				AND 		R4, R1, R2
+				LSR			R8, R4, #1	
+				ADD			R7, R7, R8	;Adds number for LED 2, 3, 4 and 5 so that all are controlled by the same number
+				LSL 		R1, R1, #1	
+				AND 		R4, R1, R2
+				ADD			R7, R7, R4	;Adds number for LED 2, 3, 4, 5 and 6 so that all are controlled by the same number
+				LSR			R7, R7, #1
+				STR 		R7, [R10, #0x40] ;finally store in the memory address for port 2
+				
+				
+				LDMFD		R13!,{R1, R2, R4, R8, R15}
+
+; The Interrupt Service Routine MUST be in the startup file for simulation 
+;   to work correctly.  Add it where there is the label "EINT3_IRQHandler
+;
+;*------------------------------------------------------------------- 
+; Interrupt Service Routine (ISR) for EINT3_IRQHandler 
+;*------------------------------------------------------------------- 
+; This ISR handles the interrupt triggered when the INT0 push-button is pressed 
+; with the assumption that the interrupt activation is done in the main program
+EINT3_IRQHandler 	
+								; Use this command if you need it  
+		;
+		; Code that handles the interrupt 
+		;
+				MOV 	R6,#0x0
+				MOV 	R11, #0x400			;PLaces a 1 on the 10th bit of IO2IntClr
+				LDR		R10, =IO2IntClr
+				STR 	R11, [R10]
+
+				LDR		R10, =LED_BASE_ADR		; R10 is a  pointer to the base address for the LEDs
+				
+				BX LR				; Use this command if you used STMFD (otherwise use BX LR) 
+				
+
+;*-------------------------------------------------------------------
+; Below is a list of useful registers with their respective memory addresses.
+;*------------------------------------------------------------------- 
+LED_BASE_ADR	EQU 	0x2009c000 		; Base address of the memory that controls the LEDs 
+PINSEL3			EQU 	0x4002C00C 		; Pin Select Register 3 for P1[31:16]
+PINSEL4			EQU 	0x4002C010 		; Pin Select Register 4 for P2[15:0]
+FIO1DIR			EQU		0x2009C020 		; Fast Input Output Direction Register for Port 1 
+FIO2DIR			EQU		0x2009C040 		; Fast Input Output Direction Register for Port 2 
+FIO1SET			EQU		0x2009C038 		; Fast Input Output Set Register for Port 1 
+FIO2SET			EQU		0x2009C058 		; Fast Input Output Set Register for Port 2 
+FIO1CLR			EQU		0x2009C03C 		; Fast Input Output Clear Register for Port 1 
+FIO2CLR			EQU		0x2009C05C 		; Fast Input Output Clear Register for Port 2 
+IO2IntEnf		EQU		0x400280B4		; GPIO Interrupt Enable for port 2 Falling Edge 
+ISER0			EQU		0xE000E100		; Interrupt Set-Enable Register 0 
+IO2IntClr       EQU		0x400280AC
+				ALIGN 
+
+				END
