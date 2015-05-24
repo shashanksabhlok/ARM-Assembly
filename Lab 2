@@ -1,0 +1,169 @@
+;*----------------------------------------------------------------------------
+;* Name:    Lab_2_program.s 
+;* Purpose: This code template is for Lab 2
+;* Author:  Shashank Sabhlok and Dhruvit Gandhi
+;*----------------------------------------------------------------------------*
+		THUMB 		; Declare THUMB instruction set 
+                AREA 		My_code, CODE, READONLY 	; 
+                EXPORT 		__MAIN 		; Label __MAIN is used externally q
+		ENTRY 
+__MAIN
+; The following lines are similar to Lab-1 but use a defined address to make it easier.
+; They just turn off all LEDs 
+ResetLUT
+        MOV         R0,	#4
+		MOV 		R2, #0xC000
+		MOV 		R3, #0xB0000000	; Turn off three LEDs on port 1  
+		MOV 		R4, #0x0
+		MOVT 		R4, #0x2009
+		ADD 		R4, R4, R2 		
+		STR 		R3, [R4, #0x20]
+		MOV 		R3, #0x0000007C
+		STR 		R3, [R4, #0x40] 	; Turn off five LEDs on port 2 
+		;MOV         R6, #0x5354
+        ;MOV         R8, #0x1000
+		;MOVT        R8, #0x1000
+		;STR         R6,[R8]
+		;MOV         R6, #0x5354		
+        ;STR         R6,[R8,#2]
+
+		LDR         R8, =InputLUT            ; assign R8 to the address at label LUT
+
+
+NextChar
+        	
+			LDRB        R2, [R8]			; R8 reads the character and converts it into Morse.
+        	ADD         R8, #1              ; Point to the next address point
+			TEQ         R2, #0             ; R2 has a bit and it is going through all your characters. If there is nothing in theat bit you processed all your charactersif the contents of R2 is 0 ,If we hit 0 then reset to the start of lookup table
+			MOV			R0, #3				; delay 3 extra spaces (7 total) between words
+			MOV			R7,	#9
+			
+			
+			MOV			R3, #0				; R3 is to test to see if the led has been blinked once leading one has been activated
+			TEQ         R2, #0              ; Test if the contents of R8 is 0 ,If we hit 0 (null at end of the string) then reset to the start of lookup table
+			BNE			ProcessChar			; If we have a character process it
+			
+			
+			
+			
+
+			BEQ         RESET				;If all characters processed 
+			
+
+ProcessChar	BL			CHAR2MORSE			; convert ASCII to Morse pattern in R1		
+
+;	Loop until we have a 1 bit to send 
+;	But this is confusing as we're shifting left, but the data is in the lowest 16 bits, so test at bit 16 for 1 or 0
+			
+			MOV			R6, #0x80000000		; Init R6 with the value for the bit which we wish to test
+			CLZ 		R11, R1				; Clears the Leading Zeros.
+			LSL         R1, R11 			; To get rid of the leading zeroes.
+			MOV			R9,#32				; Moving 32 into register R9
+			SUBS		R10,R9,R11			
+			MOV			R9,R10
+			
+Shift 
+
+			
+			ANDS		R7, R1, R6			; R7 gets R1 AND R6, Zero bit gets set if it's zero			
+			
+			BLEQ		LED_OFF				; branch somewhere it's zero
+														
+			ANDS		R7, R1, R6			; R7 gets R1 AND R6, Zero bit gets set if it's zero	
+			
+			BLNE		LED_ON          	; branch when it's not zero
+
+			SUBS	    R9, #1				; Subtracting 1 from R9.
+
+			LSL			R1, R1, #1			; shift R1 right by 1, store in R1
+			
+			MOVEQ		R0,#2
+			BEQ			BEFORECHAR			;Branch if zero
+				
+			B			Shift
+
+; Subroutines
+;
+;			convert ASCII character to Morse pattern
+;			pass ASCII character in R0, output in R1
+;			index into MorseLuT must be by steps of 2 bytes
+CHAR2MORSE	STMFD		R13!,{R14}	; push Link Register (return address) on stack
+		
+		
+			SUB				R2,R2,#0x41 		; convert the ASCII to an index (subtract 41). ASCII Starts 
+			LSL				R2,R2, #1			; shift R2 left by 1, store in R2. Morse is in 16 bits and ASCII is in 8
+			LDR				R1, =MorseLUT		; Pointing R1 to the address of MorseLUT.	
+			ADD				R2,R2, R1 			; Traversing through the alphabets.
+			MOV				R1,#0X00000000
+			LDRH			R1, [R2]      		; R2 contains the memory address for the morse code- store the contents of R2 into R1.
+		
+			LDMFD		R13!,{R15}				; restore LR to R15 the Program Counter to return
+
+
+; Turn the LED on, but deal with the stack in a simpler way
+; NOTE: This method of returning from subroutine (BX  LR) does NOT work if subroutines are nested!!
+;
+LED_ON 	   	
+			STMFD		R13!,{R3, R14}	
+			MOV			R5,	#0xA0000000	
+			STR 		R5, [R4, #0x20]
+			MOV			R3,#1
+			MOV			R0,#1	;Delay once.
+			BL			DELAY
+		    LDMFD		R13!,{R3, R15}
+
+LED_OFF	  	STMFD		R13!,{R0,R3,R5, R14}	; push R3 and Link Register (return address) on stack
+			MOV			R5 , #0xB0000000
+			STR 		R5, [R4, #0x20]
+			MOV			R0,#1 ; Delay once.						
+			BEQ			DELAY				
+			LDMFD		R13!,{R0,R3,R5,R15}	
+
+;	Delay 500ms * R0 times
+DELAY			STMFD		R13!,{R0, R1,R14}
+        		TEQ		R0, #0		; Checking if R0, is 0 so that BNE and BEQ can be used seamlessly later on.
+				
+DelayLoop1
+				MOV         R1,#0x000C0000 ; Moving Hex Value into R1
+				;MOV         R1,#0x5
+                ;LSL         R1,#2
+
+DelayLoop2
+                SUBS        R1,#1
+                BNE         DelayLoop2
+                
+                SUBS        R0,#1 ; Decrementing the value of R0.
+                BNE         DelayLoop1
+exitDelay		LDMFD		R13!,{R0, R1, R15}
+
+; Used to branch back to ResetLUT once done with all the characters.
+RESET			BL LED_OFF
+				BL DELAY
+				B ResetLUT
+; Data used in the program
+
+;Branch this method if zero. Turn LED OFF. Give 1 + 2 = 3 Delays.
+BEFORECHAR
+			BL			LED_OFF
+			BL			DELAY
+			BL 			DELAY
+			B			NextChar
+		ALIGN				; make sure things fall on word addresses
+InputLUT	DCB		"SOS", 0	; strings must be stored, and read, as BYTES
+
+		ALIGN				; make sure things fall on word addresses
+MorseLUT 
+		DCW 	0x17, 0x1D5, 0x75D, 0x75 	; A, B, C, D
+		DCW 	0x1, 0x15D, 0x1DD, 0x55 	; E, F, G, H
+		DCW 	0x5, 0x1777, 0x1D7, 0x175 	; I, J, K, L
+		DCW 	0x77, 0x1D, 0x777, 0x5DD 	; M, N, O, P
+		DCW 	0x1DD7, 0x5D, 0x15, 0x7 	; Q, R, S, T
+		DCW 	0x57, 0x157, 0x177, 0x757 	; U, V, W, X
+		DCW 	0x1D77, 0x775 				; Y, Z
+
+; One can also define an address using the EQUate directive
+;
+LED_ADR		EQU 	0x2009c020 		; Base address of the memory that controls I/O like LEDs
+
+
+	END
